@@ -1,8 +1,10 @@
 ---
-title: "Machine Learning 2019: Feature Selection"
+title: 'Machine Learning 2019: Feature Selection'
 author: "Sonali Narang"
-date: October 24, 2019
-output: pdf_document
+date: "October 24, 2019"
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
@@ -97,6 +99,9 @@ results = rfe(BreastCancer_num[,1:10], BreastCancer_num[,11], sizes = c(2,5,9), 
 
 results
 results$variables
+
+#visualize
+plot(results, type=c("g", "o"))
 ```
 
 ## Feature Selection Using Embedded Methods: Lasso
@@ -108,7 +113,7 @@ Least Absolute Shrinkage and Selection Operator (LASSO) regression
 set.seed(24)
 
 #convert data
-x = x <- as.matrix(BreastCancer_num[,1:10])
+x = as.matrix(BreastCancer_num[,1:10])
 y = as.double(as.matrix(ifelse(BreastCancer_num[,11]=='benign', 0, 1))) 
 
 #fit Lasso model 
@@ -164,6 +169,75 @@ importance(rfmodel)
 
 1. Compare the most important features from at least 2 different classes of feature selection methods covered in this tutorial with any reasonable machine learning dataset from mlbench. Do these feature selection methods provide similar results? 
 
+I'm using the Pima Indians Diabetes dataset from mlbench for my examples.
+
+
+Method 1: Pearson's correlation, Pima Indian Diabetes dataset
+```{r}
+data("PimaIndiansDiabetes")
+# Scale the data since all the numeric measures are on a different scale of measurement.
+pima_scaled <- scale(PimaIndiansDiabetes[,1:8])
+
+# Use cor function to calculate Pearson's correlation
+corr_matrix2 = cor(pima_scaled)
+
+# Visualize correlation matrix with corrplot function
+corrplot(corr_matrix2, order = "hclust")
+
+# Apply correlation filter of 0.7. If correlation between features is 0.7 or above, they are highly correlated.
+high_correl2 <- colnames(pima_scaled[, -1])[findCorrelation(corr_matrix2, cutoff = 0.7, verbose = TRUE)]
+
+# Which features are highly correlated and can be removed
+high_correl2
+```
+
+**From the Pearson's correlation matrix, it looks like the highest correlated variables in this dataset are pregnancy and age, but after the filter of 0.7 was added, their correlation is not higher than 0.7. None of the variables in this data set have a correlation of 0.7 or higher, so none are highly correlated. From this method of feature selection, no variables can be eliminated.**
+
+Method 2: Random Forest, Pima Indian Diabetes dataset
+```{r}
+# Save the last column of Pima Indian Diabetes dataset as a variable and add it to the scaled data.
+diab <- PimaIndiansDiabetes[c(9)]
+pima_scaled_2 <- cbind(pima_scaled, diab)
+
+# Split data into training and testing sets (75/25).
+train_size_2 <- floor(0.75 * nrow(pima_scaled_2))
+set.seed(24)
+train_pos_2 <- sample(seq_len(nrow(pima_scaled_2)), size = train_size_2)
+
+train_class_2 <- pima_scaled_2[train_pos_2, ]
+test_class_2 <- pima_scaled_2[-train_pos_2, ]
+
+# Fit a random forest model with randomForest function, using diabetes as response variable and all the features as predictor variables.
+rf_model_2 = randomForest(diabetes ~ pregnant + glucose + pressure + triceps + insulin + mass + pedigree + age, data=train_class_2,  importance = TRUE, oob.times = 15, confusion = TRUE)
+
+# Using the importance function, rank features based on importance 
+importance(rf_model_2)
+
+```
+
+**The mean decrease in accuracy and the mean decrease in Gini can measure the importance of the variable. Here we see that glucose is the most important variable for diabetes prediction, as it has the highest mean decrease in accuracy and Gini. Looking at both mean decrease accuracy and Gini, it looks like the variable that could be considered the least important is triceps.**
+
+**Using Pearson's correlation and random forest for feature selection gives different types of results. The first determines which variables are highly correlated. If there's a high correlation between variables, these features can be eliminated. The second method, random forest, uses a model to determine how important the variables are for the prediction of the model based on accuracy and Gini index. However, this threshold is determined by the person doing the analysis.**
+
+
 2. Attempt a feature selection method not covered in this tutorial (backward elimination, forward propogation, etc.)
 
+Method 3: Backward elimination, Pima Indian Diabetes dataset
+```{r}
+# Notes for myself on feature selection using stepwise regression:
+# Forward selection, which starts with no predictors in the model, iteratively adds the most contributive predictors, and stops when the improvement is no longer statistically significant.
+# Backward selection (or backward elimination), which starts with all predictors in the model (full model), iteratively removes the least contributive predictors, and stops when you have a model where all predictors are statistically significant.
 
+# backward elimination
+# convert factors in diabetes column to numeric
+pima_scaled_2$diabetes <- ifelse(pima_scaled_2$diabetes == "pos", 1 , 2)
+pima_scaled_2$diabetes <- as.numeric(as.character(pima_scaled_2$diabetes))
+
+model <- lm(diabetes ~ ., data = pima_scaled_2)
+summary(model)
+step(model, direction = "backward")
+
+```
+
+**Looking at the results from backwards elimination, the lower the overall AIC value, the better the model. This represents the ranking of what would happen if one variable were removed. Look at what would happen (to AIC value) if each variable indicated were removed. The first elimination step removes the triceps varaible, lowering the overall AIC value. The second elimination step removes insulin, which again lowers the AIC. These were the only two variables removed in backwards elimination.
+When I used random forest above for feature selection, according to the mean decrease Gini index, triceps and insulin had the lowest values as well, which aligns with the feature selection using backwards elimination.**
